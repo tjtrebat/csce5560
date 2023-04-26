@@ -6,6 +6,16 @@ if (!$conn) {
     die("Connection failed: " . mysqli_connect_error());
 }
 
+if (empty($_SESSION['csrf_token'])) {
+    if (function_exists('random_bytes')) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    } else {
+        $_SESSION['csrf_token'] = bin2hex(openssl_random_pseudo_bytes(32));
+    }
+}
+
+$csrf_token = $_SESSION['csrf_token'];
+
 function format_uuidv4($data) {
     assert(strlen($data) == 16);
     $data[6] = chr(ord($data[6]) & 0x0f | 0x40);
@@ -15,136 +25,140 @@ function format_uuidv4($data) {
 
 if (isset($_SESSION['shopping_cart']) && count($_SESSION['shopping_cart']) > 0) {
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-        $billing_errors = array();
-        $mailing_errors = array();
-        if (isset($_POST['submit'])) {
-            if (isset($_POST['credit_card']) && strlen(trim($_POST['credit_card'])) > 0 ) {
-                $credit_card = str_replace(" ", "", $_POST['credit_card']);
-                if (!preg_match("/^[0-9]{1,50}$/", $credit_card)) {
-                    $billing_errors['credit_card'] = 'Credit card is invalid.';
-                }
-            } else {
-                $billing_errors['credit_card'] = 'Credit card must not be empty.';
-            }
-            if (isset($_POST['cvv']) && strlen(trim($_POST['cvv'])) > 0) {
-                $cvv = trim($_POST['cvv']);
-                if (!preg_match("/^[0-9]{1,5}$/", $cvv)) {
-                    $billing_errors['cvv'] = ' CVV code is invalid.';
-                }
-            } else {
-                $billing_errors['cvv'] = 'CVV code must not be empty.';    
-            }
-            if (isset($_POST['billing_addr_1']) && strlen(trim($_POST['billing_addr_1'])) > 0) {
-                $billing_addr_1 = trim($_POST['billing_addr_1']);
-                if (strlen($billing_addr_1) > 250) {
-                    $billing_errors['billing_addr_1'] = 'Street Address 1 must be no longer than 250 characters.';
-                } else if (!preg_match("/^[A-Za-z0-9\s\.]+$/", $billing_addr_1)) {
-                    $billing_errors['billing_addr_1'] = 'Street Address 1 must contain only letters, numbers, spaces and periods.';
-                }
-            } else {
-                $billing_errors['billing_addr_1'] = 'Street Address 1 must not be empty.';
-            }
-            if (isset($_POST['billing_addr_2']) && strlen(trim($_POST['billing_addr_2'])) > 0) {
-                $billing_addr_2 = trim($_POST['billing_addr_2']);
-                if (strlen($billing_addr_2) > 250) {
-                    $billing_errors['billing_addr_2'] = 'Street Address 2 must be no longer than 250 characters.';
-                } else if (!preg_match("/^[A-Za-z0-9\s\.\-]+$/", $billing_addr_2)) {
-                    $billing_errors['billing_addr_2'] = 'Street Address 2 must contain only letters, numbers, spaces, dashes and periods.';
-                }
-            }
-            if (isset($_POST['billing_city']) && strlen(trim($_POST['billing_city'])) > 0) {
-                $billing_city = trim($_POST['billing_city']);
-                if (strlen($billing_city) > 250) {
-                    $billing_errors['billing_city'] = 'City must be no longer than 250 characters.';
-                } else if (!preg_match("/^[A-Za-z\s\.\-]+$/", $billing_city)) {
-                   $billing_errors['billing_city'] = 'City must contain only letters, numbers, spaces, dashes and periods.';
-                }
-            } else {
-                $billing_errors['billing_city'] = 'City must not be empty.';
-            }
-            if (isset($_POST['billing_state']) && strlen(trim($_POST['billing_state'])) > 0) {
-                $billing_state = trim($_POST['billing_state']);
-                if (!preg_match("/^[A-Z]{2}$/", $billing_state)) {
-                    $billing_errors['billing_state'] = 'State must be a valid two-letter U.S. state code.';
-                }
-            } else {
-                $billing_errors['billing_state'] = 'State must not be empty.';
-            }
-            if (isset($_POST['billing_zip']) && strlen(trim($_POST['billing_zip'])) > 0) {
-                $billing_zip = trim($_POST['billing_zip']);
-                if (!preg_match("/^[0-9]{5}$/", $billing_zip)) {
-                    $billing_errors['billing_state'] = 'Zip Code must be a valid five-digit U.S. postal code.';
-                }
-            } else {
-                $billing_errors['billing_zip'] = 'Zip Code must not be empty.';
-            }
-
-            if (isset($_POST['mailing_addr_1']) && strlen(trim($_POST['mailing_addr_1'])) > 0) {
-                $mailing_addr_1 = trim($_POST['mailing_addr_1']);
-                if (strlen($mailing_addr_1) > 250) {
-                    $mailing_errors['mailing_addr_1'] = 'Street Address 1 must be no longer than 250 characters.';
-                } else if (!preg_match("/^[A-Za-z0-9\s\.]+$/", $mailing_addr_1)) {
-                    $mailing_errors['mailing_addr_1'] = 'Street Address 1 must contain only letters, numbers, spaces and periods.';
-                }
-            } else {
-                $mailing_errors['mailing_addr_1'] = 'Street Address 1 must not be empty.';
-            }
-            if (isset($_POST['mailing_addr_2']) && strlen(trim($_POST['mailing_addr_2'])) > 0) {
-                $mailing_addr_2 = trim($_POST['mailing_addr_2']);
-                if (strlen($mailing_addr_2) > 250) {
-                    $mailing_errors['mailing_addr_2'] = 'Street Address 2 must be no longer than 250 characters.';
-                } else if (!preg_match("/^[A-Za-z0-9\s\.\-]+$/", $mailing_addr_2)) {
-                    $mailing_errors['mailing_addr_2'] = 'Street Address 2 must contain only letters, numbers, spaces, dashes and periods.';
-                }
-            }
-            if (isset($_POST['mailing_city']) && strlen(trim($_POST['mailing_city'])) > 0) {
-                $mailing_city = trim($_POST['mailing_city']);
-                if (strlen($mailing_city) > 250) {
-                    $mailing_errors['mailing_city'] = 'City must be no longer than 250 characters.';
-                } else if (!preg_match("/^[A-Za-z\s\.\-]+$/", $mailing_city)) {
-                   $mailing_errors['mailing_city'] = 'City must contain only letters, numbers, spaces, dashes and periods.';
-                }
-            } else {
-                $mailing_errors['mailing_city'] = 'City must not be empty.';
-            }
-            if (isset($_POST['mailing_state']) && strlen(trim($_POST['mailing_state'])) > 0) {
-                $mailing_state = trim($_POST['mailing_state']);
-                if (!preg_match("/^[A-Z]{2}$/", $mailing_state)) {
-                    $mailing_errors['mailing_state'] = 'State must be a valid two-letter U.S. state code.';
-                }
-            } else {
-                $mailing_errors['mailing_state'] = 'State must not be empty.';
-            }
-            if (isset($_POST['mailing_zip']) && strlen(trim($_POST['mailing_zip'])) > 0) {
-                $mailing_zip = trim($_POST['mailing_zip']);
-                if (!preg_match("/^[0-9]{5}$/", $mailing_zip)) {
-                    $mailing_errors['mailing_state'] = 'Zip Code must be a valid five-digit U.S. postal code.';
-                }
-            } else {
-                $mailing_errors['mailing_zip'] = 'Zip Code must not be empty.';
-            }
-            if (count($billing_errors) == 0 && count($mailing_errors) == 0) {
-                $sql = "INSERT INTO checkout_confirmation (confirmation_number) VALUES ('" . format_uuidv4(random_bytes(16)) . "')";
-                if (mysqli_query($conn, $sql)) {
-                    $confirmation_id = mysqli_insert_id($conn);
-                    $sql = "INSERT INTO checkout_addresses (confirmation_id, billing_addr_1, billing_addr_2, billing_city, billing_state, billing_zip, mailing_addr_1, mailing_addr_2, mailing_city, mailing_state, mailing_zip) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                    $stmt = mysqli_prepare($conn, $sql);
-                    mysqli_stmt_bind_param($stmt, "issssssssss", $confirmation_id, $billing_addr_1, $billing_addr_2, $billing_city, $billing_state, $billing_zip, $mailing_addr_1, $mailing_addr_2, $mailing_city, $mailing_state, $mailing_zip);
-                    mysqli_stmt_execute($stmt);
-                    if (mysqli_stmt_affected_rows($stmt) > 0) {
-                        foreach ($_SESSION['shopping_cart'] as $product_id => $quantity) {                   
-                            $sql = "INSERT INTO product_checkout (confirmation_id, product_id, quantity) VALUES ($confirmation_id, $product_id, $quantity)";
-                            mysqli_query($conn, $sql);
-                        }
-                        $_SESSION['confirmation_id'] = $confirmation_id;
-                        unset($_SESSION['shopping_cart']);
-                        header('Location: /index.php/confirmation');
-                        exit;
+        if (isset($_POST['csrf_token']) && $_POST['csrf_token'] == $_SESSION['csrf_token']) {
+            $billing_errors = array();
+            $mailing_errors = array();
+            if (isset($_POST['submit'])) {
+                if (isset($_POST['credit_card']) && strlen(trim($_POST['credit_card'])) > 0 ) {
+                    $credit_card = str_replace(" ", "", $_POST['credit_card']);
+                    if (!preg_match("/^[0-9]{1,50}$/", $credit_card)) {
+                        $billing_errors['credit_card'] = 'Credit card is invalid.';
                     }
                 } else {
-                   echo "Error: " . $sql . "<br>" . $conn->error;
+                    $billing_errors['credit_card'] = 'Credit card must not be empty.';
+                }
+                if (isset($_POST['cvv']) && strlen(trim($_POST['cvv'])) > 0) {
+                    $cvv = trim($_POST['cvv']);
+                    if (!preg_match("/^[0-9]{1,5}$/", $cvv)) {
+                        $billing_errors['cvv'] = ' CVV code is invalid.';
+                    }
+                } else {
+                    $billing_errors['cvv'] = 'CVV code must not be empty.';    
+                }
+                if (isset($_POST['billing_addr_1']) && strlen(trim($_POST['billing_addr_1'])) > 0) {
+                    $billing_addr_1 = trim($_POST['billing_addr_1']);
+                    if (strlen($billing_addr_1) > 250) {
+                        $billing_errors['billing_addr_1'] = 'Street Address 1 must be no longer than 250 characters.';
+                    } else if (!preg_match("/^[A-Za-z0-9\s\.]+$/", $billing_addr_1)) {
+                        $billing_errors['billing_addr_1'] = 'Street Address 1 must contain only letters, numbers, spaces and periods.';
+                    }
+                } else {
+                    $billing_errors['billing_addr_1'] = 'Street Address 1 must not be empty.';
+                }
+                if (isset($_POST['billing_addr_2']) && strlen(trim($_POST['billing_addr_2'])) > 0) {
+                    $billing_addr_2 = trim($_POST['billing_addr_2']);
+                    if (strlen($billing_addr_2) > 250) {
+                        $billing_errors['billing_addr_2'] = 'Street Address 2 must be no longer than 250 characters.';
+                    } else if (!preg_match("/^[A-Za-z0-9\s\.\-]+$/", $billing_addr_2)) {
+                        $billing_errors['billing_addr_2'] = 'Street Address 2 must contain only letters, numbers, spaces, dashes and periods.';
+                    }
+                }
+                if (isset($_POST['billing_city']) && strlen(trim($_POST['billing_city'])) > 0) {
+                    $billing_city = trim($_POST['billing_city']);
+                    if (strlen($billing_city) > 250) {
+                        $billing_errors['billing_city'] = 'City must be no longer than 250 characters.';
+                    } else if (!preg_match("/^[A-Za-z\s\.\-]+$/", $billing_city)) {
+                       $billing_errors['billing_city'] = 'City must contain only letters, numbers, spaces, dashes and periods.';
+                    }
+                } else {
+                    $billing_errors['billing_city'] = 'City must not be empty.';
+                }
+                if (isset($_POST['billing_state']) && strlen(trim($_POST['billing_state'])) > 0) {
+                    $billing_state = trim($_POST['billing_state']);
+                    if (!preg_match("/^[A-Z]{2}$/", $billing_state)) {
+                        $billing_errors['billing_state'] = 'State must be a valid two-letter U.S. state code.';
+                    }
+                } else {
+                    $billing_errors['billing_state'] = 'State must not be empty.';
+                }
+                if (isset($_POST['billing_zip']) && strlen(trim($_POST['billing_zip'])) > 0) {
+                    $billing_zip = trim($_POST['billing_zip']);
+                    if (!preg_match("/^[0-9]{5}$/", $billing_zip)) {
+                        $billing_errors['billing_state'] = 'Zip Code must be a valid five-digit U.S. postal code.';
+                    }
+                } else {
+                    $billing_errors['billing_zip'] = 'Zip Code must not be empty.';
+                }
+
+                if (isset($_POST['mailing_addr_1']) && strlen(trim($_POST['mailing_addr_1'])) > 0) {
+                    $mailing_addr_1 = trim($_POST['mailing_addr_1']);
+                    if (strlen($mailing_addr_1) > 250) {
+                        $mailing_errors['mailing_addr_1'] = 'Street Address 1 must be no longer than 250 characters.';
+                    } else if (!preg_match("/^[A-Za-z0-9\s\.]+$/", $mailing_addr_1)) {
+                        $mailing_errors['mailing_addr_1'] = 'Street Address 1 must contain only letters, numbers, spaces and periods.';
+                    }
+                } else {
+                    $mailing_errors['mailing_addr_1'] = 'Street Address 1 must not be empty.';
+                }
+                if (isset($_POST['mailing_addr_2']) && strlen(trim($_POST['mailing_addr_2'])) > 0) {
+                    $mailing_addr_2 = trim($_POST['mailing_addr_2']);
+                    if (strlen($mailing_addr_2) > 250) {
+                        $mailing_errors['mailing_addr_2'] = 'Street Address 2 must be no longer than 250 characters.';
+                    } else if (!preg_match("/^[A-Za-z0-9\s\.\-]+$/", $mailing_addr_2)) {
+                        $mailing_errors['mailing_addr_2'] = 'Street Address 2 must contain only letters, numbers, spaces, dashes and periods.';
+                    }
+                }
+                if (isset($_POST['mailing_city']) && strlen(trim($_POST['mailing_city'])) > 0) {
+                    $mailing_city = trim($_POST['mailing_city']);
+                    if (strlen($mailing_city) > 250) {
+                        $mailing_errors['mailing_city'] = 'City must be no longer than 250 characters.';
+                    } else if (!preg_match("/^[A-Za-z\s\.\-]+$/", $mailing_city)) {
+                       $mailing_errors['mailing_city'] = 'City must contain only letters, numbers, spaces, dashes and periods.';
+                    }
+                } else {
+                    $mailing_errors['mailing_city'] = 'City must not be empty.';
+                }
+                if (isset($_POST['mailing_state']) && strlen(trim($_POST['mailing_state'])) > 0) {
+                    $mailing_state = trim($_POST['mailing_state']);
+                    if (!preg_match("/^[A-Z]{2}$/", $mailing_state)) {
+                        $mailing_errors['mailing_state'] = 'State must be a valid two-letter U.S. state code.';
+                    }
+                } else {
+                    $mailing_errors['mailing_state'] = 'State must not be empty.';
+                }
+                if (isset($_POST['mailing_zip']) && strlen(trim($_POST['mailing_zip'])) > 0) {
+                    $mailing_zip = trim($_POST['mailing_zip']);
+                    if (!preg_match("/^[0-9]{5}$/", $mailing_zip)) {
+                        $mailing_errors['mailing_state'] = 'Zip Code must be a valid five-digit U.S. postal code.';
+                    }
+                } else {
+                    $mailing_errors['mailing_zip'] = 'Zip Code must not be empty.';
+                }
+                if (count($billing_errors) == 0 && count($mailing_errors) == 0) {
+                    $sql = "INSERT INTO checkout_confirmation (confirmation_number) VALUES ('" . format_uuidv4(random_bytes(16)) . "')";
+                    if (mysqli_query($conn, $sql)) {
+                        $confirmation_id = mysqli_insert_id($conn);
+                        $sql = "INSERT INTO checkout_addresses (confirmation_id, billing_addr_1, billing_addr_2, billing_city, billing_state, billing_zip, mailing_addr_1, mailing_addr_2, mailing_city, mailing_state, mailing_zip) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                        $stmt = mysqli_prepare($conn, $sql);
+                        mysqli_stmt_bind_param($stmt, "issssssssss", $confirmation_id, $billing_addr_1, $billing_addr_2, $billing_city, $billing_state, $billing_zip, $mailing_addr_1, $mailing_addr_2, $mailing_city, $mailing_state, $mailing_zip);
+                        mysqli_stmt_execute($stmt);
+                        if (mysqli_stmt_affected_rows($stmt) > 0) {
+                            foreach ($_SESSION['shopping_cart'] as $product_id => $quantity) {                   
+                                $sql = "INSERT INTO product_checkout (confirmation_id, product_id, quantity) VALUES ($confirmation_id, $product_id, $quantity)";
+                                mysqli_query($conn, $sql);
+                            }
+                            $_SESSION['confirmation_id'] = $confirmation_id;
+                            unset($_SESSION['shopping_cart']);
+                            header('Location: /index.php/confirmation');
+                            exit;
+                        }
+                    } else {
+                       echo "Error: " . $sql . "<br>" . $conn->error;
+                    }
                 }
             }
+        } else {        
+            echo "<p style=\"color: red\">The form submission could not be processed because the security token did not match. This could be due to a potential CSRF attack on the website. Please try again, ensuring that all form fields are filled in correctly, and that you have not navigated away from the form page or submitted the form more than once. If the issue persists, please contact support for assistance.</p>";        
         }
     }
 
@@ -216,6 +230,7 @@ if (isset($_SESSION['shopping_cart']) && count($_SESSION['shopping_cart']) > 0) 
     echo "<p style=\"text-align:right;\"><span style=\"font-size:large;font-weight:bold\">Total: \$" . round($total, 2) . "</span></p>";
     echo "</div>";
     echo "<input type=\"submit\" name=\"submit\" value=\"Checkout $totalQuantity Items\" style=\"float:right;padding:10px 5px;margin-top:25px;\" />";
+    echo "<input type=\"hidden\" name=\"csrf_token\" value=\"$csrf_token\" />";
     echo "</form>";
     mysqli_close($conn);
 } else {

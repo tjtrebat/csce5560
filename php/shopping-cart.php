@@ -6,18 +6,32 @@ if (!$conn) {
     die("Connection failed: " . mysqli_connect_error());
 }
 
+if (empty($_SESSION['csrf_token'])) {
+    if (function_exists('random_bytes')) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    } else {
+        $_SESSION['csrf_token'] = bin2hex(openssl_random_pseudo_bytes(32));
+    }
+}
+
+$csrf_token = $_SESSION['csrf_token'];
+
 if (isset($_SESSION['shopping_cart']) && count($_SESSION['shopping_cart']) > 0) {
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-        if (isset($_POST['update'])) {
-            $product = intval($_POST['product_id']);
-            if (array_key_exists($product, $_SESSION['shopping_cart'])) {
-                $quantity = intval($_POST['quantity']);
-                if ($quantity == 0) {
-                    unset($_SESSION['shopping_cart'][$product]);
-                } else {
-                    $_SESSION['shopping_cart'][$product] = $quantity;     
+        if (isset($_POST['csrf_token']) && $_POST['csrf_token'] == $_SESSION['csrf_token']) {
+            if (isset($_POST['update'])) {
+                $product = intval($_POST['product_id']);
+                if (array_key_exists($product, $_SESSION['shopping_cart'])) {
+                    $quantity = intval($_POST['quantity']);
+                    if ($quantity == 0) {
+                        unset($_SESSION['shopping_cart'][$product]);
+                    } else {
+                        $_SESSION['shopping_cart'][$product] = $quantity;     
+                    }
                 }
             }
+        } else {
+            echo "<p style=\"color: red\">The form submission could not be processed because the security token did not match. This could be due to a potential CSRF attack on the website. Please try again, ensuring that all form fields are filled in correctly, and that you have not navigated away from the form page or submitted the form more than once. If the issue persists, please contact support for assistance.</p>";        
         }
     }
     echo "<table width=\"100%\">";
@@ -43,6 +57,7 @@ if (isset($_SESSION['shopping_cart']) && count($_SESSION['shopping_cart']) > 0) 
             echo "</select>";          
             echo "<input type=\"submit\" name=\"update\" value=\"Update\" />";
             echo "<input type=\"hidden\" name=\"product_id\" value=\"$product_id\" />";
+            echo "<input type=\"hidden\" name=\"csrf_token\" value=\"$csrf_token\" />";
             echo "</form>";
             echo "</td>";
             echo "</tr>";            

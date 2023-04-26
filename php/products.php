@@ -1,6 +1,21 @@
 <?php
 session_start();
 
+$conn = mysqli_connect("localhost", "wordpressuser", "oM#Gb@u42!", "wordpress");
+if (!$conn) {
+    die("Connection failed: " . mysqli_connect_error());
+}
+
+if (empty($_SESSION['csrf_token'])) {
+    if (function_exists('random_bytes')) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    } else {
+        $_SESSION['csrf_token'] = bin2hex(openssl_random_pseudo_bytes(32));
+    }
+}
+
+$csrf_token = $_SESSION['csrf_token'];
+
 $sqlFilters = array();
 $sqlParamTypes = "";
 $sqlParamValues = array();
@@ -9,33 +24,37 @@ $page = 0;
 $resultsPerPage = 10;
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if (isset($_POST['category_id']) && is_numeric($_POST['category_id'])) {
-        $category_id = intval($_POST['category_id']);
-    }
-    if (isset($_POST['search']) && strlen(trim($_POST['search'])) > 0) {
-        $search = trim($_POST['search']);
-        $search = filter_var($search, FILTER_SANITIZE_STRING);
-    }
-    if (isset($_POST['submit'])) {
-        $product = intval($_POST['product_id']);
-        $quantity = intval($_POST['quantity']);
-        if (!isset($_SESSION['shopping_cart'])) {
-            $_SESSION['shopping_cart'] = array();
+    if (isset($_POST['csrf_token']) && $_POST['csrf_token'] == $_SESSION['csrf_token']) {
+        if (isset($_POST['category_id']) && is_numeric($_POST['category_id'])) {
+            $category_id = intval($_POST['category_id']);
         }
-        if (isset($_SESSION['shopping_cart'][$product])) {
-            $_SESSION['shopping_cart'][$product] += $quantity;
-        } else {
-            $_SESSION['shopping_cart'][$product] = $quantity;
+        if (isset($_POST['search']) && strlen(trim($_POST['search'])) > 0) {
+            $search = trim($_POST['search']);
+            $search = filter_var($search, FILTER_SANITIZE_STRING);
         }
-        $urlParams = array();
-        if (isset($category_id)) {
-            array_push($urlParams, "category_id=$category_id");
+        if (isset($_POST['submit'])) {
+            $product = intval($_POST['product_id']);
+            $quantity = intval($_POST['quantity']);
+            if (!isset($_SESSION['shopping_cart'])) {
+                $_SESSION['shopping_cart'] = array();
+            }
+            if (isset($_SESSION['shopping_cart'][$product])) {
+                $_SESSION['shopping_cart'][$product] += $quantity;
+            } else {
+                $_SESSION['shopping_cart'][$product] = $quantity;
+            }
+            $urlParams = array();
+            if (isset($category_id)) {
+                array_push($urlParams, "category_id=$category_id");
+            }
+            if (isset($search)) {
+                array_push($urlParams, "search=" . urlencode($search));
+            }
+            header("Location: /index.php/products" . ((count($urlParams) > 0) ? "?" : "") . implode("&", $urlParams));
+            exit;
         }
-        if (isset($search)) {
-            array_push($urlParams, "search=" . urlencode($search));
-        }
-        header("Location: /index.php/products" . ((count($urlParams) > 0) ? "?" : "") . implode("&", $urlParams));
-        exit;
+    } else {
+        echo "<p style=\"color: red\">The form submission could not be processed because the security token did not match. This could be due to a potential CSRF attack on the website. Please try again, ensuring that all form fields are filled in correctly, and that you have not navigated away from the form page or submitted the form more than once. If the issue persists, please contact support for assistance.</p>";    
     }
 } else {
     if (isset($_GET['category_id']) && is_numeric($_GET['category_id'])) {
@@ -69,13 +88,9 @@ echo "<input type=\"text\" name=\"search\" placeholder=\"Search by name, author,
 if (isset($category_id)) {
     echo "<input type=\"hidden\" name=\"category_id\" value=\"" . $category_id . "\" />";
 }
+echo "<input type=\"hidden\" name=\"csrf_token\" value=\"$csrf_token\" />";
 echo "<input type=\"submit\" value=\"Search\" />";
 echo "</form>";
-
-$conn = mysqli_connect("localhost", "wordpressuser", "oM#Gb@u42!", "wordpress");
-if (!$conn) {
-    die("Connection failed: " . mysqli_connect_error());
-}
 
 $offset = $page * $resultsPerPage;
 
@@ -127,7 +142,6 @@ if (mysqli_num_rows($result) > 0) {
             echo "<option value=\"" . ($i + 1) . "\">" . ($i + 1) . "</option>";
         }
         echo "</select>";
-        echo "<input type=\"submit\" name=\"submit\" value=\"Buy\" />";
         echo "<input type=\"hidden\" name=\"product_id\" value=\"" . $row['id'] . "\" />";
         if (isset($category_id)) {
             echo "<input type=\"hidden\" name=\"category_id\" value=\"" . $category_id . "\" />";
@@ -135,6 +149,8 @@ if (mysqli_num_rows($result) > 0) {
         if (isset($search) && strlen($search) > 0) {
             echo "<input type=\"hidden\" name=\"search\" value=\"" . $search . "\" />";
         }
+        echo "<input type=\"hidden\" name=\"csrf_token\" value=\"$csrf_token\" />";
+        echo "<input type=\"submit\" name=\"submit\" value=\"Buy\" />";
         echo "</form>";
         echo "</td>";
         echo "</tr>";
